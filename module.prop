@@ -3,4 +3,4 @@ name=NX809J FeliCa
 version=1.0
 versionCode=10
 author=local
-description=GEN_JP NFC CE, stock felica cfg, eSE Type-F listen JNI, Play Store queryable. No /system/app overlay.
+description=GEN_JP, felica cfg, Type-F JNI, 4 FeliCa APKs as user apps, force-queryable Play. No /system/app overlay.

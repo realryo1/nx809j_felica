@@ -1,23 +1,49 @@
 # NX809J FeliCa
 
-NX809J（RedMagic 10 Pro 日本向け）の Evolution X で、おサイフケータイの **かざし（Type-F CE）** まで含めて動かす KernelSU モジュール。APK の `/system/app` overlay はしない（起動停止する）。
+NX809J（RedMagic 11 Pro 日本向け）の Evolution X で、おサイフケータイのかざし（Type-F CE）まで動かす KernelSU モジュール。
+
+English: [README_en.md](README_en.md)
 
 確認済み: 再起動後に Rakuten Mini が Suica を読む。3cm 程度でも認識。
 
-## 入れるもの
+## 全体
 
-| 層 | 内容 |
+| 層 | どこ | 状態 |
+| --- | --- | --- |
+| eSE1（OMAPI） | TEST イメージで VINTF 復元 | 動いた。本流 ROM へ戻す件は XDA |
+| おサイフ 4 APK | この zip の `apk/`。起動時にユーザーインストール | `/system/app` overlay は使わない |
+| Play ストア可視性 | このモジュールが起動時に必ず付ける | 無いとおサイフの Google ログインが 032016 |
+| cfg + `GEN_JP` + Type-F JNI | この zip | 対象 |
+
+
+## おサイフ 4 APK
+
+実体は NX809J stock。
+
+| zip 内 | package | 元 |
+| --- | --- | --- |
+| `apk/MobileFeliCaClient/MobileFeliCaClient.apk` | `com.felicanetworks.mfc` | `stock20-felica-system` |
+| `apk/MobileFeliCaMenuMainApp/MobileFeliCaMenuMainApp.apk` | `com.felicanetworks.mfm.main` | `stock20-felica-system` |
+| `apk/MobileFeliCaSettingApp/MobileFeliCaSettingApp.apk` | `com.felicanetworks.mfs` | `stock20-felica-data/mfs.apk`（system の SettingApp より新しい） |
+| `apk/MobileFeliCaWebPluginBoot/MobileFeliCaWebPluginBoot.apk` | `com.felicanetworks.mfw.a.boot` | `stock20-felica-system` |
+
+`FeliCaLock` と `MobileFeliCaWebPlugin` は NX809J stock に無いので入れない。
+
+起動後、未インストールなら `mfc` → `mfs` → `mfw` → `mfm` の順で `pm install`（ユーザーアプリ）。既にあるパッケージは触らない（Suica データを残す）。Play だけ先に入っていると `MFC_ACCESS` が落ちることがある。そのときは Play 側を消して再起動し、このモジュールに入れさせる。
+
+モジュールを外しても 4 APK は残る。
+
+## この zip が入れるもの
+
+| 内容 | 役割 |
 | --- | --- |
 | persist | `GEN_JP`、`persist.st_nfc_felica_ese/fsi=1`、HAL を `libnfc-hal-st_felica.conf` |
 | cfg | stock の `common.cfg` / `mfm.cfg` / `mfs.cfg` を `/product/etc/felica/` へ |
 | CE | AOSP JNI が eSE の Type-F listen を落とすのを、`libnfc_nci_jni.so` の 2 命令だけ直して zygote ns に bind |
-| 032016 | ユーザーおサイフから Play ストアが見えるよう `force-queryable` |
-
-前提: eSE1（OMAPI）が生きていること。TEST の eSE1 イメージはそのまま。古い `nx809j_felica_cfg` とは同時に入れない（この zip を入れると再起動で remove する）。
+| 4 APK | `apk/` からユーザーインストール。`mfc` を先に入れる |
+| 032016 | 起動時に Play ストアへ `force-queryable` を必ず付ける。付くまで最大 5 回 |
 
 ## 入れ方
-
-中身を zip にする（`.git` は入らない）:
 
 ```text
 python tools/pack.py
@@ -29,15 +55,16 @@ KernelSU で `nx809j_felica-1.0.zip` をインストールして再起動。ま�
 ksud module install nx809j_felica-1.0.zip
 ```
 
-ログ: `/data/local/tmp/felica_cfg.log` と `felica_cfg_svc.log`。
+ログ: `/data/local/tmp/felica_cfg.log` と `felica_cfg_svc.log`。後者に `apk ok` または `apk already`、`vending force-queryable ok`、`NFC_F_PASSIVE_LISTEN_MODE` があること。
 
-かざし確認: `dumpsys nfc` に `NFC_F_PASSIVE_LISTEN_MODE` と `TECHNOLOGY_F … 0x86`。
+かざし: `dumpsys nfc` に `NFC_F_PASSIVE_LISTEN_MODE` と `TECHNOLOGY_F … 0x86`。
 
 ## やらないこと
 
 - `/system/app` への APK overlay
 - `libnfc-nci_felica.conf` の bind（`HOST_LISTEN_TECH_MASK=0x7` は F を host に盗む）
 - HAL CHECK パッチ、eSE ファームの推測書き換え
+- Mini 用 AndroPlus APK の流用
 
 ## JNI パッチ
 
