@@ -1,0 +1,4 @@
+persist.st_nfc_felica_ese=1
+persist.st_nfc_felica_fsi=1
+persist.vendor.custom.variant.id=GEN_JP
+persist.vendor.nfc.config_file_name=libnfc-hal-st_felica.conf

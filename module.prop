@@ -1,0 +1,6 @@
+id=nx809j_felica
+name=NX809J FeliCa
+version=1.0
+versionCode=10
+author=local
+description=GEN_JP NFC CE, stock felica cfg, eSE Type-F listen JNI, Play Store queryable. No /system/app overlay.
