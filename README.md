@@ -51,7 +51,7 @@ English: [README_en.md](README_en.md)
 
 ```text
 python tools/pack.py
-ksud module install nx809j_felica-1.3.zip
+ksud module install nx809j_felica-1.4.zip
 ```
 
 ログ: `/data/local/tmp/felica_cfg.log` と `felica_cfg_svc.log`。後者に `apk ok` または `apk already`、`vending force-queryable ok`、`NFC_F_PASSIVE_LISTEN_MODE` があること。

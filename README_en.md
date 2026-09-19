@@ -50,7 +50,7 @@ To pack locally:
 
 ```text
 python tools/pack.py
-ksud module install nx809j_felica-1.3.zip
+ksud module install nx809j_felica-1.4.zip
 ```
 
 Logs: `/data/local/tmp/felica_cfg.log` and `felica_cfg_svc.log`. The latter should contain `apk ok` or `apk already`, `vending force-queryable ok`, and `NFC_F_PASSIVE_LISTEN_MODE`.

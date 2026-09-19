@@ -57,6 +57,24 @@ bind_jni() {
   [ "$ok" = "1" ]
 }
 
+apply_ese_routes() {
+  k=0
+  while [ "$k" -lt 8 ]; do
+    cmd nfc overwrite-routing-table 0 eSE1 eSE1 eSE1 eSE1 eSE1 >>"$LOG" 2>&1
+    if dumpsys nfc 2>/dev/null | grep -q "TECHNOLOGY_F.*0x86"; then
+      echo "route eSE1 ok try=$k" >> "$LOG"
+      dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|NFC_F_PASSIVE" >> "$LOG"
+      return 0
+    fi
+    echo "route eSE1 wait try=$k" >> "$LOG"
+    sleep 3
+    k=$((k + 1))
+  done
+  echo "route eSE1 FAILED" >> "$LOG"
+  dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|NFC_F_PASSIVE" >> "$LOG"
+  return 1
+}
+
 if [ -f "$JNI" ]; then
   chcon u:object_r:system_lib_file:s0 "$JNI" >>"$LOG" 2>&1
   chmod 644 "$JNI"
@@ -68,6 +86,15 @@ if [ -f "$JNI" ]; then
   sleep 2
   svc nfc enable
   sleep 6
+  w=0
+  while [ "$w" -lt 20 ]; do
+    if service check nfc 2>/dev/null | grep -q "found"; then
+      break
+    fi
+    sleep 2
+    w=$((w + 1))
+  done
+  echo "nfc wait w=$w" >> "$LOG"
   umount_jni "$ZYGOTE"
   echo "jni_umount zygote $ZYGOTE" >> "$LOG"
   for name in com.google.android.gms com.google.android.gms.unstable com.android.vending; do
@@ -80,8 +107,7 @@ else
   echo "jni skip no file" >> "$LOG"
 fi
 
-cmd nfc overwrite-routing-table 0 eSE1 eSE1 eSE1 eSE1 eSE1 >>"$LOG" 2>&1
-dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|NFC_F_PASSIVE" >> "$LOG"
+apply_ese_routes
 
 # AndroPlus layout is system/app/<Name>/<Name>.apk (Magic Mount). That hung
 # boot on NX809J erofs. Same folder names live under $MODDIR/apk and pm
@@ -172,6 +198,7 @@ v=0
 while [ "$v" -lt 5 ]; do
   if has_vending_override; then
     echo "vending force-queryable ok" >> "$LOG"
+    apply_ese_routes
     echo "done $(date)" >> "$LOG"
     if [ "$apk_fail" -ne 0 ]; then
       exit 1
@@ -185,5 +212,6 @@ while [ "$v" -lt 5 ]; do
 done
 
 echo "vending force-queryable FAILED" >> "$LOG"
+apply_ese_routes
 echo "done $(date)" >> "$LOG"
 exit 1

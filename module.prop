@@ -1,6 +1,6 @@
 id=nx809j_felica
 name=NX809J FeliCa
-version=1.3
-versionCode=13
+version=1.4
+versionCode=14
 author=realryo1
 description=GEN_JP, felica cfg, Type-F JNI, 4 FeliCa APKs as user apps, Play force-queryable for Osaifu Google login. No /system/app overlay.
