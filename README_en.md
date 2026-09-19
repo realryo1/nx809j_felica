@@ -76,3 +76,40 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634dc`: do not strip F with the `OFFHOST_LISTEN_TECH_MASK` AND
 
 A bind from the `su` namespace never reaches NfcService. Bind zygote and leave it (same as 1.0) so later NFC restarts keep Type-F listen. Unmounting zygote drops tap after reboot.
+
+## Trade-offs
+
+Choosing tap means giving up hiding.
+
+| Cost | What it is |
+| --- | --- |
+| JNI left on zygote | Type-F listen survives later NFC restarts. The `/data` `.so` overlay is visible to GMS / DroidGuard. 1.1+ unmounted it for DEVICE; tap then died after reboot. Wipe still left DEVICE at BASIC, so the ROM side (fingerprint split, etc.) already fails DEVICE on its own |
+| Play Store `force-queryable` | User-installed Osaifu can see Play. Every app can see that Play is installed. A Play self-update can drop the flag until the next boot (`(032016)`). Uninstalling the module leaves the 4 APKs and this flag |
+| TEST eSE1 + KernelSU | Mainline ROM has no `ISecureElement/eSE1`. The JNI patch is for this Evolution X 17 apex. Overlaying `/system/app` hangs boot on this device |
+
+Forcing routes toward eSE1 can leave Google Pay Type-A HCE on host or pull it onto eSE. FeliCaLock is not on stock, so it is not included.
+
+## If you were creating a Japan-oriented Evolution X build
+
+Stock Osaifu is a system app, so Play `force-queryable` would not be needed. Overlaying `/system/app` after the fact with KernelSU hangs boot on this device. `FLAG_SYSTEM` therefore has to be baked into the image.
+
+If the ROM baked the following into super / product / the NFC apex, this module would not be needed.
+
+| If the ROM | then |
+| --- | --- |
+| Restores odm `ISecureElement/eSE1` and unstops the HAL on JP only (keep the global mask) | OMAPI without the TEST zip |
+| Ships the 4 APKs in `/system/app` or `/product/app` at build time | `FLAG_SYSTEM`. No Play `force-queryable`. `(032016)` goes away |
+| Puts `common.cfg` `00000011,eSE1` on `/product/etc/felica` | `(030204)` goes away |
+| Defaults the JP SKU to `GEN_JP` and `libnfc-hal-st_felica.conf` (do not ship `HOST_LISTEN=0x7`) | Type-F firmware. No per-boot `resetprop` |
+| Fixes `RoutingManager` in source and ships it in the NFC apex | No zygote bind. No `/data` `.so` overlay |
+| Does all of the above | Issuance and tap can work with no KernelSU module. `st54j*.ko` is already in `vendor_boot` |
+
+Baking in FeliCa and passing Play Integrity DEVICE are separate.
+
+| If | then |
+| --- | --- |
+| Only FeliCa is baked on the current 17/09 base | The module can go. Tap and Google login look like stock. DEVICE only loses the extra wounds this module adds (zygote bind, Play visible to every app, `resetprop`). The 17/09 fingerprint split (mustang Canary vs NX809J) stays, so DEVICE likely still fails |
+| The 03/09-class Integrity spoof is restored and FeliCa is baked | DEVICE and tap can coexist. 03/09 already got BASIC+DEVICE with KernelSU in the kernel. STRONG still fails while unlocked |
+| KernelSU is removed from the kernel | Not required for FeliCa. It may help DEVICE, but it was not required on 03/09 |
+
+Stock on this unit already did Suica at the gate with an unlocked bootloader and without BASIC. Tap itself does not require DEVICE.

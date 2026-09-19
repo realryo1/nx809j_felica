@@ -77,3 +77,40 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634dc`: `OFFHOST_LISTEN_TECH_MASK` の AND で F を消さない
 
 apex の `.so` は `su` ns からは NfcService に届かない。zygote に bind して残す（1.0 と同じ）。NFC が後から起き直しても Type-F listen が残る。zygote から外すと再起動後のかざしが落ちる。
+
+## 代償
+
+かざしを優先した時点で、隠す側は捨てている。
+
+| 代償 | 内容 |
+| --- | --- |
+| JNI を zygote に残す | NFC が後から起き直しても Type-F listen が残る。代わりに `/data` の `.so` overlay が GMS / DroidGuard から見える。1.1 以降は DEVICE 用に外して、再起動後のかざしが死んだ。wipe 後も DEVICE は BASIC のままなので、ROM 側（fingerprint の食い違いなど）でも既に落ちている |
+| Play を `force-queryable` | ユーザーおサイフから Play が見える。どのアプリからも Play の存在が見える。Play の自己更新でフラグが落ち、次の起動まで `(032016)` になり得る。モジュールを外しても 4 APK とこのフラグは残る |
+| TEST の eSE1 と KernelSU | 本流 ROM では `ISecureElement/eSE1` が無い。JNI は Evolution X 17 のその apex 用。`/system/app` overlay はこの機種で起動停止する |
+
+ルートを eSE1 に寄せるので、Google Pay の Type-A HCE は host に残ったり eSE に寄ったりする。FeliCaLock は stock にも無いので入れてない。
+
+## もし Evolution X の日本向けビルドを作成するなら
+
+stock ならおサイフは system アプリなので Play の `force-queryable` は不要。KernelSU で `/system/app` に後から足すとこの機種では起動停止する。だから `FLAG_SYSTEM` はイメージに最初から焼くしかない。
+
+もし ROM が次を super / product / NFC apex に焼いたら、このモジュールは不要。
+
+| もし ROM が | なら |
+| --- | --- |
+| JP だけ odm の `ISecureElement/eSE1` を戻し、HAL の `stop` を外す（グローバルは今どおりマスク） | TEST zip 無しで OMAPI |
+| 4 APK をビルド時に `/system/app` か `/product/app` へ | `FLAG_SYSTEM`。Play の `force-queryable` は不要。`(032016)` も消える |
+| `common.cfg` の `00000011,eSE1` を `/product/etc/felica` へ | `(030204)` は消える |
+| JP SKU の既定を `GEN_JP` と `libnfc-hal-st_felica.conf` にする（`HOST_LISTEN=0x7` は載せない） | Type-F FW。起動ごとの `resetprop` は不要 |
+| `RoutingManager` をソースで直し、NFC apex に入れる | zygote bind は不要。`/data` の `.so` overlay も無い |
+| 上まで焼く | KernelSU モジュール無しでも発行とかざしは成立し得る。`st54j*.ko` は既に `vendor_boot` にある |
+
+FeliCa を焼くことと Play Integrity DEVICE は別。
+
+| もし | なら |
+| --- | --- |
+| 今の 17/09 ベースに FeliCa だけ焼く | モジュールは消せる。かざしと Google ログインは stock に近い。DEVICE はこのモジュールが足している傷（zygote bind、Play 全公開、`resetprop`）が無いだけ。17/09 の指紋（mustang Canary 対 NX809J）はそのままなので、DEVICE は通らない可能性が高い |
+| 03/09 相当の Integrity spoof を戻したうえで FeliCa も焼く | DEVICE とかざしが両立し得る。03/09 は KernelSU 入りカーネルのままで BASIC+DEVICE が出ていた。STRONG は unlock のままでは出ない |
+| KernelSU をカーネルから外す | FeliCa には不要。DEVICE の保険にはなるが、03/09 では必須ではなかった |
+
+この機の stock は bootloader unlock・BASIC 無しでも Suica 改札は通っている。おサイフのかざし自体は DEVICE を要求しない。
