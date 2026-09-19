@@ -38,7 +38,7 @@ Uninstalling the module does not remove the 4 APKs. Play Store `force-queryable`
 | --- | --- |
 | persist | `GEN_JP`, `persist.st_nfc_felica_ese/fsi=1`, HAL config `libnfc-hal-st_felica.conf` |
 | cfg | Stock `common.cfg` / `mfm.cfg` / `mfs.cfg` onto `/product/etc/felica/` |
-| CE | AOSP JNI drops Type-F listen on eSE; patch two instructions in `libnfc_nci_jni.so`. Let NFC inherit the bind, then unmount it from zygote / GMS |
+| CE | AOSP JNI drops Type-F listen on eSE; patch two instructions in `libnfc_nci_jni.so`. Bind zygote and leave it (1.0 tap path) |
 | 4 APKs | User-install from `apk/`. `mfc` first |
 | 032016 | Set Play Store `force-queryable` at boot (up to 5 tries). Re-apply on the next boot if a Play self-update drops it |
 
@@ -50,7 +50,7 @@ To pack locally:
 
 ```text
 python tools/pack.py
-ksud module install nx809j_felica-1.4.zip
+ksud module install nx809j_felica-1.5.zip
 ```
 
 Logs: `/data/local/tmp/felica_cfg.log` and `felica_cfg_svc.log`. The latter should contain `apk ok` or `apk already`, `vending force-queryable ok`, and `NFC_F_PASSIVE_LISTEN_MODE`.
@@ -75,4 +75,4 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634cc`: on a matching F route, still load F even when `lf_protocol==0`
 - `0x1634dc`: do not strip F with the `OFFHOST_LISTEN_TECH_MASK` AND
 
-A bind from the `su` namespace never reaches NfcService. Bind zygote so NFC inherits it, then unmount zygote / GMS / DroidGuard. Leaving the overlay on zygote makes Play Integrity DEVICE drop.
+A bind from the `su` namespace never reaches NfcService. Bind zygote and leave it (same as 1.0) so later NFC restarts keep Type-F listen. Unmounting zygote drops tap after reboot.

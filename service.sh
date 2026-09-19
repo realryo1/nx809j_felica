@@ -1,9 +1,9 @@
 #!/system/bin/sh
 # 1. variantidBin may overwrite GEN_JP with GEN_NON_EEA after post-fs-data.
 # 2. AOSP NFC apex JNI skips Type-F listen when eSE reports lf_protocol=0.
-#    Bind patched libnfc_nci_jni.so into zygote, bounce NFC so it inherits,
-#    then umount zygote / GMS / vending. Leaving the bind on zygote makes
-#    DroidGuard see a /data overlay and DEVICE drops.
+#    Bind patched libnfc_nci_jni.so into zygote and leave it. NFC restarts
+#    after boot inherit the bind. 1.1+ umounted zygote for Play Integrity
+#    DEVICE; tap then died across NFC restarts.
 # 3. Bundled FeliCa APKs are user-installed (pm). Do not overlay /system/app.
 # 4. Play Store force-queryable always. User-installed mfm cannot see
 #    com.android.vending otherwise (032016 on Google login).
@@ -27,87 +27,40 @@ resetprop persist.vendor.nfc.config_file_name libnfc-hal-st_felica.conf
 echo "variant $(getprop persist.vendor.custom.variant.id)" >> "$LOG"
 
 JNI="$MODDIR/jni/libnfc_nci_jni.so"
-
-umount_jni() {
-  target="$1"
-  [ -n "$target" ] || return 0
-  for p in /apex/com.android.nfcservices/lib64/libnfc_nci_jni.so /apex/com.android.nfcservices@*/lib64/libnfc_nci_jni.so; do
-    nsenter -t "$target" -m -- umount "$p" 2>/dev/null
-  done
-}
-
-bind_jni() {
-  target="$1"
-  tag="$2"
-  if [ -z "$target" ]; then
-    echo "jni skip $tag no pid" >> "$LOG"
-    return 1
-  fi
-  ok=0
-  for p in /apex/com.android.nfcservices/lib64/libnfc_nci_jni.so /apex/com.android.nfcservices@*/lib64/libnfc_nci_jni.so; do
-    nsenter -t "$target" -m -- test -f "$p" || continue
-    nsenter -t "$target" -m -- umount "$p" 2>/dev/null
-    if nsenter -t "$target" -m -- mount --bind "$JNI" "$p" >>"$LOG" 2>&1; then
-      echo "jni_bind $tag $p" >> "$LOG"
-      ok=1
-    else
-      echo "jni_bind_fail $tag $p" >> "$LOG"
-    fi
-  done
-  [ "$ok" = "1" ]
-}
-
-apply_ese_routes() {
-  k=0
-  while [ "$k" -lt 8 ]; do
-    cmd nfc overwrite-routing-table 0 eSE1 eSE1 eSE1 eSE1 eSE1 >>"$LOG" 2>&1
-    if dumpsys nfc 2>/dev/null | grep -q "TECHNOLOGY_F.*0x86"; then
-      echo "route eSE1 ok try=$k" >> "$LOG"
-      dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|NFC_F_PASSIVE" >> "$LOG"
-      return 0
-    fi
-    echo "route eSE1 wait try=$k" >> "$LOG"
-    sleep 3
-    k=$((k + 1))
-  done
-  echo "route eSE1 FAILED" >> "$LOG"
-  dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|NFC_F_PASSIVE" >> "$LOG"
-  return 1
-}
-
-if [ -f "$JNI" ]; then
+ZYGOTE=$(pidof zygote64)
+if [ -f "$JNI" ] && [ -n "$ZYGOTE" ]; then
   chcon u:object_r:system_lib_file:s0 "$JNI" >>"$LOG" 2>&1
   chmod 644 "$JNI"
-  ZYGOTE=$(pidof zygote64)
-  bind_jni "$ZYGOTE" zygote
+  for p in /apex/com.android.nfcservices/lib64/libnfc_nci_jni.so /apex/com.android.nfcservices@*/lib64/libnfc_nci_jni.so; do
+    nsenter -t "$ZYGOTE" -m -- test -f "$p" || continue
+    nsenter -t "$ZYGOTE" -m -- umount "$p" 2>/dev/null
+    if nsenter -t "$ZYGOTE" -m -- mount --bind "$JNI" "$p" >>"$LOG" 2>&1; then
+      echo "jni_bind $p" >> "$LOG"
+    else
+      echo "jni_bind_fail $p" >> "$LOG"
+    fi
+  done
+else
+  echo "jni skip zygote=$ZYGOTE file=$( [ -f "$JNI" ] && echo yes || echo no )" >> "$LOG"
+fi
+
+need_bounce=1
+if dumpsys nfc 2>/dev/null | grep -q "NFC_F_PASSIVE_LISTEN_MODE"; then
+  need_bounce=0
+  echo "f listen already on" >> "$LOG"
+fi
+
+if [ "$need_bounce" = "1" ]; then
   echo "bounce nfc" >> "$LOG"
   svc nfc disable
   killall com.android.nfc 2>/dev/null
   sleep 2
   svc nfc enable
   sleep 6
-  w=0
-  while [ "$w" -lt 20 ]; do
-    if service check nfc 2>/dev/null | grep -q "found"; then
-      break
-    fi
-    sleep 2
-    w=$((w + 1))
-  done
-  echo "nfc wait w=$w" >> "$LOG"
-  umount_jni "$ZYGOTE"
-  echo "jni_umount zygote $ZYGOTE" >> "$LOG"
-  for name in com.google.android.gms com.google.android.gms.unstable com.android.vending; do
-    for pid in $(pidof "$name"); do
-      umount_jni "$pid"
-      echo "jni_umount $name $pid" >> "$LOG"
-    done
-  done
-else
-  echo "jni skip no file" >> "$LOG"
 fi
 
-apply_ese_routes
+cmd nfc overwrite-routing-table 0 eSE1 eSE1 eSE1 eSE1 eSE1 >>"$LOG" 2>&1
+dumpsys nfc 2>/dev/null | grep -E "SYSTEMCODE_FEFE|TECHNOLOGY_F|TECHNOLOGY_A|NFC_F_PASSIVE" >> "$LOG"
 
 # AndroPlus layout is system/app/<Name>/<Name>.apk (Magic Mount). That hung
 # boot on NX809J erofs. Same folder names live under $MODDIR/apk and pm
@@ -198,7 +151,6 @@ v=0
 while [ "$v" -lt 5 ]; do
   if has_vending_override; then
     echo "vending force-queryable ok" >> "$LOG"
-    apply_ese_routes
     echo "done $(date)" >> "$LOG"
     if [ "$apk_fail" -ne 0 ]; then
       exit 1
@@ -212,6 +164,5 @@ while [ "$v" -lt 5 ]; do
 done
 
 echo "vending force-queryable FAILED" >> "$LOG"
-apply_ese_routes
 echo "done $(date)" >> "$LOG"
 exit 1

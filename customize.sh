@@ -1,9 +1,9 @@
 #!/system/bin/sh
 # KernelSU / Magisk zip install. Do not overlay /system/app.
 SKIPUNZIP=0
-ui_print "- NX809J FeliCa 1.4"
-ui_print "- GEN_JP + felica cfg + Type-F listen + 4 APK (user pm, not overlay)"
-ui_print "- Play force-queryable on (Osaifu Google login / 032016)"
+ui_print "- NX809J FeliCa 1.5"
+ui_print "- GEN_JP + felica cfg + Type-F JNI on zygote (1.0 tap path)"
+ui_print "- 4 APK user pm + Play force-queryable (032016)"
 
 if [ -d /data/adb/modules/nx809j_felica_cfg ] && [ ! -f /data/adb/modules/nx809j_felica_cfg/remove ]; then
   touch /data/adb/modules/nx809j_felica_cfg/remove

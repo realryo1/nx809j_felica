@@ -39,7 +39,7 @@ English: [README_en.md](README_en.md)
 | --- | --- |
 | persist | `GEN_JP`、`persist.st_nfc_felica_ese/fsi=1`、HAL を `libnfc-hal-st_felica.conf` |
 | cfg | stock の `common.cfg` / `mfm.cfg` / `mfs.cfg` を `/product/etc/felica/` へ |
-| CE | AOSP JNI が eSE の Type-F listen を落とすのを、`libnfc_nci_jni.so` の 2 命令だけ直す。NFC に継承させたあと zygote / GMS からは外す |
+| CE | AOSP JNI が eSE の Type-F listen を落とすのを、`libnfc_nci_jni.so` の 2 命令だけ直す。zygote に bind して残す（1.0） |
 | 4 APK | `apk/` からユーザーインストール。`mfc` を先に入れる |
 | 032016 | 起動時に Play ストアへ `force-queryable` を最大 5 回付ける。Play の自己更新で落ちたら次の起動で付け直す |
 
@@ -51,7 +51,7 @@ English: [README_en.md](README_en.md)
 
 ```text
 python tools/pack.py
-ksud module install nx809j_felica-1.4.zip
+ksud module install nx809j_felica-1.5.zip
 ```
 
 ログ: `/data/local/tmp/felica_cfg.log` と `felica_cfg_svc.log`。後者に `apk ok` または `apk already`、`vending force-queryable ok`、`NFC_F_PASSIVE_LISTEN_MODE` があること。
@@ -76,4 +76,4 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634cc`: F ルート一致時に `lf_protocol==0` でも F を載せる
 - `0x1634dc`: `OFFHOST_LISTEN_TECH_MASK` の AND で F を消さない
 
-apex の `.so` は `su` ns からは NfcService に届かない。一度 zygote に bind して NFC に継承させ、すぐ zygote / GMS / DroidGuard から外す。zygote に残すと Play Integrity の DEVICE が落ちる。
+apex の `.so` は `su` ns からは NfcService に届かない。zygote に bind して残す（1.0 と同じ）。NFC が後から起き直しても Type-F listen が残る。zygote から外すと再起動後のかざしが落ちる。
