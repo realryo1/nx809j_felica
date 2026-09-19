@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack module zip
+        run: python3 tools/pack.py
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version=' module.prop | cut -d= -f2 | tr -d '\r')
+          ZIP="nx809j_felica-${VERSION}.zip"
+          TAG="v${VERSION}"
+          test -f "$ZIP"
+          NOTES="KernelSU module zip. See README.md / README_en.md."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "nx809j_felica ${VERSION}" \
+              --notes "$NOTES" \
+              --target "${GITHUB_SHA}"
+          fi

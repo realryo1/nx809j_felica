@@ -1,10 +1,11 @@
 #!/system/bin/sh
 # 1. variantidBin may overwrite GEN_JP with GEN_NON_EEA after post-fs-data.
 # 2. AOSP NFC apex JNI skips Type-F listen when eSE reports lf_protocol=0.
-#    Bind a patched libnfc_nci_jni.so into zygote's mount ns (apex is not
-#    visible from the su ns bind).
+#    Bind patched libnfc_nci_jni.so into zygote, bounce NFC so it inherits,
+#    then umount zygote / GMS / vending. Leaving the bind on zygote makes
+#    DroidGuard see a /data overlay and DEVICE drops.
 # 3. Bundled FeliCa APKs are user-installed (pm). Do not overlay /system/app.
-# 4. Play Store must be force-queryable. User-installed mfm cannot see
+# 4. Play Store force-queryable always. User-installed mfm cannot see
 #    com.android.vending otherwise (032016 on Google login).
 MODDIR=${0%/*}
 LOG=/data/local/tmp/felica_cfg_svc.log
@@ -26,36 +27,57 @@ resetprop persist.vendor.nfc.config_file_name libnfc-hal-st_felica.conf
 echo "variant $(getprop persist.vendor.custom.variant.id)" >> "$LOG"
 
 JNI="$MODDIR/jni/libnfc_nci_jni.so"
-ZYGOTE=$(pidof zygote64)
-if [ -f "$JNI" ] && [ -n "$ZYGOTE" ]; then
-  chcon u:object_r:system_lib_file:s0 "$JNI" >>"$LOG" 2>&1
-  chmod 644 "$JNI"
+
+umount_jni() {
+  target="$1"
+  [ -n "$target" ] || return 0
   for p in /apex/com.android.nfcservices/lib64/libnfc_nci_jni.so /apex/com.android.nfcservices@*/lib64/libnfc_nci_jni.so; do
-    [ -f "$p" ] || continue
-    nsenter -t "$ZYGOTE" -m -- umount "$p" 2>/dev/null
-    if nsenter -t "$ZYGOTE" -m -- mount --bind "$JNI" "$p" >>"$LOG" 2>&1; then
-      echo "jni_bind $p" >> "$LOG"
+    nsenter -t "$target" -m -- umount "$p" 2>/dev/null
+  done
+}
+
+bind_jni() {
+  target="$1"
+  tag="$2"
+  if [ -z "$target" ]; then
+    echo "jni skip $tag no pid" >> "$LOG"
+    return 1
+  fi
+  ok=0
+  for p in /apex/com.android.nfcservices/lib64/libnfc_nci_jni.so /apex/com.android.nfcservices@*/lib64/libnfc_nci_jni.so; do
+    nsenter -t "$target" -m -- test -f "$p" || continue
+    nsenter -t "$target" -m -- umount "$p" 2>/dev/null
+    if nsenter -t "$target" -m -- mount --bind "$JNI" "$p" >>"$LOG" 2>&1; then
+      echo "jni_bind $tag $p" >> "$LOG"
+      ok=1
     else
-      echo "jni_bind_fail $p" >> "$LOG"
+      echo "jni_bind_fail $tag $p" >> "$LOG"
     fi
   done
-else
-  echo "jni skip zygote=$ZYGOTE file=$( [ -f "$JNI" ] && echo yes || echo no )" >> "$LOG"
-fi
+  [ "$ok" = "1" ]
+}
 
-need_bounce=1
-if dumpsys nfc 2>/dev/null | grep -q "NFC_F_PASSIVE_LISTEN_MODE"; then
-  need_bounce=0
-  echo "f listen already on" >> "$LOG"
-fi
-
-if [ "$need_bounce" = "1" ]; then
+if [ -f "$JNI" ]; then
+  chcon u:object_r:system_lib_file:s0 "$JNI" >>"$LOG" 2>&1
+  chmod 644 "$JNI"
+  ZYGOTE=$(pidof zygote64)
+  bind_jni "$ZYGOTE" zygote
   echo "bounce nfc" >> "$LOG"
   svc nfc disable
   killall com.android.nfc 2>/dev/null
   sleep 2
   svc nfc enable
   sleep 6
+  umount_jni "$ZYGOTE"
+  echo "jni_umount zygote $ZYGOTE" >> "$LOG"
+  for name in com.google.android.gms com.google.android.gms.unstable com.android.vending; do
+    for pid in $(pidof "$name"); do
+      umount_jni "$pid"
+      echo "jni_umount $name $pid" >> "$LOG"
+    done
+  done
+else
+  echo "jni skip no file" >> "$LOG"
 fi
 
 cmd nfc overwrite-routing-table 0 eSE1 eSE1 eSE1 eSE1 eSE1 >>"$LOG" 2>&1

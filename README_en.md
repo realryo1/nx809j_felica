@@ -4,7 +4,7 @@ KernelSU module that enables Osaifu-Keitai tap (Type-F card emulation) on Evolut
 
 日本語: [README.md](README.md)
 
-Verified: after reboot, a Rakuten Mini reads Suica from this phone. It still works at about 3 cm.
+Verified: after reboot, a Rakuten Mini reads Suica from this phone. It still works at about 3 cm. Google login (032016) works by making Play Store `force-queryable`.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Verified: after reboot, a Rakuten Mini reads Suica from this phone. It still wor
 | --- | --- | --- |
 | eSE1 (OMAPI) | VINTF restored in the TEST image | Works. Putting this back on the mainline ROM is an XDA matter |
 | Osaifu-Keitai 4 APKs | `apk/` in this zip; installed as user apps at boot | Do not overlay `/system/app` |
-| Play Store visibility | This module always sets it at boot | Without it, Google login inside Osaifu-Keitai fails with 032016 |
+| Play Store visibility | `force-queryable` at boot (up to 5 tries) | User-installed Osaifu cannot see Play otherwise → Google login `(032016)` |
 | cfg + `GEN_JP` + Type-F JNI | This zip | In scope |
 
 ## Osaifu-Keitai 4 APKs
@@ -30,7 +30,7 @@ Binaries are from NX809J stock.
 
 After boot, if a package is missing, `pm install` it as a user app in this order: `mfc` → `mfs` → `mfw` → `mfm`. Already-installed packages are left alone (so Suica data stays). If only the Play Store copies were installed first, `MFC_ACCESS` can fail. Uninstall those Play copies, reboot, and let this module install them.
 
-Uninstalling the module does not remove the 4 APKs.
+Uninstalling the module does not remove the 4 APKs. Play Store `force-queryable` also stays.
 
 ## What this zip applies
 
@@ -38,20 +38,19 @@ Uninstalling the module does not remove the 4 APKs.
 | --- | --- |
 | persist | `GEN_JP`, `persist.st_nfc_felica_ese/fsi=1`, HAL config `libnfc-hal-st_felica.conf` |
 | cfg | Stock `common.cfg` / `mfm.cfg` / `mfs.cfg` onto `/product/etc/felica/` |
-| CE | AOSP JNI drops Type-F listen on eSE; patch two instructions in `libnfc_nci_jni.so` and bind it into the zygote mount ns |
+| CE | AOSP JNI drops Type-F listen on eSE; patch two instructions in `libnfc_nci_jni.so`. Let NFC inherit the bind, then unmount it from zygote / GMS |
 | 4 APKs | User-install from `apk/`. `mfc` first |
-| 032016 | Always set Play Store `force-queryable` at boot. Retry up to 5 times until it sticks |
+| 032016 | Set Play Store `force-queryable` at boot (up to 5 tries). Re-apply on the next boot if a Play self-update drops it |
 
 ## Install
 
+Install the `nx809j_felica-*.zip` from [Releases](https://github.com/realryo1/nx809j_felica/releases) in KernelSU and reboot.
+
+To pack locally:
+
 ```text
 python tools/pack.py
-```
-
-Install `nx809j_felica-1.0.zip` in KernelSU and reboot. Or:
-
-```text
-ksud module install nx809j_felica-1.0.zip
+ksud module install nx809j_felica-1.3.zip
 ```
 
 Logs: `/data/local/tmp/felica_cfg.log` and `felica_cfg_svc.log`. The latter should contain `apk ok` or `apk already`, `vending force-queryable ok`, and `NFC_F_PASSIVE_LISTEN_MODE`.
@@ -76,4 +75,4 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634cc`: on a matching F route, still load F even when `lf_protocol==0`
 - `0x1634dc`: do not strip F with the `OFFHOST_LISTEN_TECH_MASK` AND
 
-The apex is visible only in zygote's mount namespace. A bind from the `su` namespace never reaches NfcService.
+A bind from the `su` namespace never reaches NfcService. Bind zygote so NFC inherits it, then unmount zygote / GMS / DroidGuard. Leaving the overlay on zygote makes Play Integrity DEVICE drop.

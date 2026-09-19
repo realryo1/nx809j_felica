@@ -4,7 +4,7 @@ NX809J（RedMagic 11 Pro 日本向け）の Evolution X で、おサイフケー
 
 English: [README_en.md](README_en.md)
 
-確認済み: 再起動後に Rakuten Mini が Suica を読む。3cm 程度でも認識。
+確認済み: 再起動後に Rakuten Mini が Suica を読む。3cm 程度でも認識。Google ログイン（032016）は Play ストアを `force-queryable` にして通す。
 
 ## 全体
 
@@ -12,7 +12,7 @@ English: [README_en.md](README_en.md)
 | --- | --- | --- |
 | eSE1（OMAPI） | TEST イメージで VINTF 復元 | 動いた。本流 ROM へ戻す件は XDA |
 | おサイフ 4 APK | この zip の `apk/`。起動時にユーザーインストール | `/system/app` overlay は使わない |
-| Play ストア可視性 | このモジュールが起動時に必ず付ける | 無いとおサイフの Google ログインが 032016 |
+| Play ストア可視性 | 起動時に `force-queryable`（最大 5 回） | ユーザーおサイフから Play が見えないと Google ログインが `(032016)` |
 | cfg + `GEN_JP` + Type-F JNI | この zip | 対象 |
 
 
@@ -31,7 +31,7 @@ English: [README_en.md](README_en.md)
 
 起動後、未インストールなら `mfc` → `mfs` → `mfw` → `mfm` の順で `pm install`（ユーザーアプリ）。既にあるパッケージは触らない（Suica データを残す）。Play だけ先に入っていると `MFC_ACCESS` が落ちることがある。そのときは Play 側を消して再起動し、このモジュールに入れさせる。
 
-モジュールを外しても 4 APK は残る。
+モジュールを外しても 4 APK は残る。Play の `force-queryable` も残る。
 
 ## この zip が入れるもの
 
@@ -39,20 +39,19 @@ English: [README_en.md](README_en.md)
 | --- | --- |
 | persist | `GEN_JP`、`persist.st_nfc_felica_ese/fsi=1`、HAL を `libnfc-hal-st_felica.conf` |
 | cfg | stock の `common.cfg` / `mfm.cfg` / `mfs.cfg` を `/product/etc/felica/` へ |
-| CE | AOSP JNI が eSE の Type-F listen を落とすのを、`libnfc_nci_jni.so` の 2 命令だけ直して zygote ns に bind |
+| CE | AOSP JNI が eSE の Type-F listen を落とすのを、`libnfc_nci_jni.so` の 2 命令だけ直す。NFC に継承させたあと zygote / GMS からは外す |
 | 4 APK | `apk/` からユーザーインストール。`mfc` を先に入れる |
-| 032016 | 起動時に Play ストアへ `force-queryable` を必ず付ける。付くまで最大 5 回 |
+| 032016 | 起動時に Play ストアへ `force-queryable` を最大 5 回付ける。Play の自己更新で落ちたら次の起動で付け直す |
 
 ## 入れ方
 
+[Releases](https://github.com/realryo1/nx809j_felica/releases) の `nx809j_felica-*.zip` を KernelSU に入れて再起動。
+
+手元で固める場合:
+
 ```text
 python tools/pack.py
-```
-
-KernelSU で `nx809j_felica-1.0.zip` をインストールして再起動。または:
-
-```text
-ksud module install nx809j_felica-1.0.zip
+ksud module install nx809j_felica-1.3.zip
 ```
 
 ログ: `/data/local/tmp/felica_cfg.log` と `felica_cfg_svc.log`。後者に `apk ok` または `apk already`、`vending force-queryable ok`、`NFC_F_PASSIVE_LISTEN_MODE` があること。
@@ -77,4 +76,4 @@ python tools/patch_jni.py path/to/libnfc_nci_jni.so -o jni/libnfc_nci_jni.so
 - `0x1634cc`: F ルート一致時に `lf_protocol==0` でも F を載せる
 - `0x1634dc`: `OFFHOST_LISTEN_TECH_MASK` の AND で F を消さない
 
-apex は zygote の mount ns にだけ見える。`su` からの bind では NfcService に届かない。
+apex の `.so` は `su` ns からは NfcService に届かない。一度 zygote に bind して NFC に継承させ、すぐ zygote / GMS / DroidGuard から外す。zygote に残すと Play Integrity の DEVICE が落ちる。

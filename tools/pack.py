@@ -6,13 +6,13 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP_DIR = {".git", "__pycache__"}
+SKIP_DIR = {".git", ".github", "__pycache__"}
 SKIP_FILE_SUFFIX = {".zip", ".pyc"}
 
 
 def main() -> None:
     prop = (ROOT / "module.prop").read_text(encoding="utf-8")
-    version = "1.0"
+    version = "1.3"
     for line in prop.splitlines():
         if line.startswith("version="):
             version = line.split("=", 1)[1].strip()
@@ -23,6 +23,8 @@ def main() -> None:
                 continue
             rel = path.relative_to(ROOT)
             if any(p in SKIP_DIR for p in rel.parts):
+                continue
+            if rel.parts[0].startswith("nx809j_felica-"):
                 continue
             if path.suffix in SKIP_FILE_SUFFIX:
                 continue
